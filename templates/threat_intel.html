@@ -1,0 +1,54 @@
+{% extends "layout.html" %}
+
+{% block content %}
+
+<div class="card">
+
+    <h3>🚨 Live Threat Feed</h3>
+
+    <table class="threat-table">
+
+        <thead>
+
+            <tr>
+                <th>Time</th>
+                <th>Threat</th>
+                <th>Severity</th>
+                <th>Status</th>
+            </tr>
+
+        </thead>
+
+        <tbody>
+
+            {% for threat in threats %}
+
+            <tr>
+
+                <td>{{ threat.time }}</td>
+
+                <td>{{ threat.name }}</td>
+
+                <td>
+
+                    <span class="severity {{ threat.severity|lower }}">
+                        {{ threat.severity }}
+                    </span>
+
+                </td>
+
+                <td>{{ threat.status }}</td>
+
+            </tr>
+
+            {% endfor %}
+
+        </tbody>
+
+    </table>
+
+</div>
+
+</div>
+
+{% endblock %}

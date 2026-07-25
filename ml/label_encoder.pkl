@@ -1,0 +1,94 @@
+import os
+import hashlib
+import math
+
+"""
+Enhanced Feature Extractor Module for Network & File Threat Detection.
+Extracts static security features including magic byte signatures, file size,
+Shannon entropy, execution risk flags, and cryptographic hashes.
+"""
+
+EXECUTABLE_EXTENSIONS = {'.exe', '.dll', '.sys', '.drv', '.com', '.bat', '.ps1', '.vbs', '.js', '.scr', '.jar'}
+MEDIA_DOC_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.pdf', '.docx', '.xlsx', '.csv', '.txt'}
+
+def calculate_entropy(filepath):
+    """
+    Calculates the Shannon Entropy of a file to detect encryption/obfuscation/packing.
+    Higher entropy (close to 8.0) indicates encrypted or compressed file content.
+    """
+    with open(filepath, "rb") as f:
+        data = f.read()
+
+    if len(data) == 0:
+        return 0.0
+
+    entropy = 0.0
+    for x in range(256):
+        p = data.count(bytes([x])) / len(data)
+        if p > 0:
+            entropy -= p * math.log2(p)
+
+    return round(entropy, 2)
+
+def check_magic_header(filepath):
+    """Inspects raw header magic bytes to verify PE execution risk."""
+    try:
+        with open(filepath, "rb") as f:
+            header = f.read(4)
+        if header.startswith(b'MZ'):
+            return 1 # Windows Executable/DLL (PE)
+        if header.startswith(b'%PDF'):
+            return 0 # PDF Document
+        if header.startswith(b'\xff\xd8\xff'):
+            return 0 # JPEG Image
+        if header.startswith(b'\x89PNG'):
+            return 0 # PNG Image
+        if header.startswith(b'PK'):
+            return 2 # Zip Archive / OpenXML Doc
+        return 0
+    except Exception:
+        return 0
+
+def sha256(filepath):
+    """Calculates SHA256 checksum of a file."""
+    h = hashlib.sha256()
+    with open(filepath, "rb") as f:
+        while chunk := f.read(4096):
+            h.update(chunk)
+    return h.hexdigest()
+
+def md5(filepath):
+    """Calculates MD5 checksum of a file."""
+    h = hashlib.md5()
+    with open(filepath, "rb") as f:
+        while chunk := f.read(4096):
+            h.update(chunk)
+    return h.hexdigest()
+
+def extract_features(filepath):
+    """
+    Extracts comprehensive static features from a file path for high-precision ML inference.
+    """
+    filesize = os.path.getsize(filepath)
+    extension = os.path.splitext(filepath)[1].lower()
+    entropy = calculate_entropy(filepath)
+    magic_type = check_magic_header(filepath)
+    
+    is_exec = 1 if (extension in EXECUTABLE_EXTENSIONS or magic_type == 1) else 0
+    # High entropy is only suspicious if it's an executable or script payload, not standard compressed media
+    is_high_entropy = 1 if (entropy >= 6.8 and extension not in MEDIA_DOC_EXTENSIONS) else 0
+    
+    md5_hash = md5(filepath)
+    sha256_hash = sha256(filepath)
+
+    return {
+        "filesize": filesize,
+        "size": filesize,
+        "extension": extension,
+        "entropy": float(entropy),
+        "is_executable": is_exec,
+        "is_high_entropy": is_high_entropy,
+        "magic_header_pe": magic_type,
+        "md5": md5_hash,
+        "sha256": sha256_hash
+    }
