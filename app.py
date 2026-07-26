@@ -338,14 +338,17 @@ login_manager.login_view = "login"
 
 @login_manager.user_loader
 def load_user(user_id):
+    conn = sqlite3.connect("database/threat.db")
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT username, role FROM users WHERE username=?", (user_id,))
+    user = cursor.fetchone()
+    conn.close()
 
-    if user_id in users:
-        role = users[user_id]["role"]
-        return User(user_id, role)
+    if user:
+        return User(user["username"], user["role"])
 
     return None
-
-os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 def allowed_file(filename):
 
     return "." in filename and \
@@ -1505,7 +1508,5 @@ from database.db import init_db
 if __name__ == "__main__":
     print("Initializing database...")
     init_db()
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)
 
-if __name__ == "__main__":
-    app.run(debug=True)
