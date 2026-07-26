@@ -4,6 +4,9 @@ import pandas as pd
 import plotly.express as px
 import csv
 from io import StringIO
+import sqlite3
+from flask import request, render_template, redirect, url_for, flash
+from werkzeug.security import generate_password_hash
 from flask import Response
 import csv
 from datetime import datetime
@@ -187,7 +190,7 @@ ALLOWED_EXTENSIONS = {
     'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', # Documents
     'zip', 'rar', '7z', 'tar', 'gz',            # Archives
     'csv', 'json', 'txt',                       # Data & Logs
-    'pcap', 'pcapng'                            # Packet Captures
+    'pcap', 'pcapng', 'png', 'csv'                            # Packet Captures
 }
 
 def allowed_file(filename: str) -> bool:
@@ -383,19 +386,33 @@ def login():
         username = request.form["username"]
         password = request.form["password"]
 
-        if username in users and users[username]["password"] == password:
+        conn = sqlite3.connect("database/threat.db")
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
 
-            role = users[username]["role"]
+        cursor.execute(
+            "SELECT * FROM users WHERE username=?",
+            (username,)
+        )
 
-            user = User(username, role)
-            login_user(user)
+        user = cursor.fetchone()
+
+        conn.close()
+
+        if user and check_password_hash(user["password"], password):
+
+            login_user(
+                User(
+                    user["username"],
+                    user["role"]
+                )
+            )
 
             return redirect(url_for("dashboard"))
 
         flash("Invalid Username or Password")
 
     return render_template("login.html")
-
 
 @app.route("/logout")
 @login_required
@@ -1425,10 +1442,70 @@ def notifications():
 @app.route("/qr-scan")
 @login_required
 def qr_scan():
-    return render_template("qr_scan.html")   
+    return render_template("qr_scan.html") 
+
+
+from werkzeug.security import check_password_hash
+
+
+@app.route("/signup", methods=["GET", "POST"])
+def signup():
+
+    if request.method == "POST":
+
+        username = request.form["username"]
+        email = request.form["email"]
+        password = request.form["password"]
+        confirm_password = request.form["confirm_password"]
+
+        if password != confirm_password:
+            flash("Passwords do not match", "error")
+            return redirect(url_for("signup"))
+
+        hashed_password = generate_password_hash(password)
+
+        conn = sqlite3.connect("database/threat.db")
+        cursor = conn.cursor()
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)
+""")
+
+        try:
+
+            cursor.execute("""
+            INSERT INTO users(username,email,password)
+            VALUES(?,?,?)
+            """, (username, email, hashed_password))
+
+            conn.commit()
+
+            flash("Registration Successful! Please Login.", "success")
+
+        except sqlite3.IntegrityError:
+
+            flash("Email already exists.", "error")
+
+        conn.close()
+
+        return redirect(url_for("login"))
+
+    return render_template("signup.html")
 # ======================================
 # Run Flask
-# ======================================
+# =======
+from database.db import init_db
+
+if __name__ == "__main__":
+    print("Initializing database...")
+    init_db()
+    app.run(debug=True)
 
 if __name__ == "__main__":
     app.run(debug=True)
