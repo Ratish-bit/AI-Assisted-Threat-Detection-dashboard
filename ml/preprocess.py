@@ -2,80 +2,103 @@ import pandas as pd
 from sklearn.preprocessing import LabelEncoder
 
 """
-Preprocessing module for ML Threat Detection Pipeline.
-Handles data cleaning, train/test feature encoding without data leakage,
-and transformation of unseen evaluation/inference samples.
+Preprocessing module for AI Threat Detection.
 """
 
 def clean_data(df):
     """
-    Cleans raw dataset: standardizes column names, removes missing values and duplicate rows.
+    Cleans dataset and prepares it for machine learning.
     """
+
     df = df.copy()
-    
-    # Standardize column names (map 'filesize' to 'size' if present)
-    if "filesize" in df.columns and "size" not in df.columns:
-        df.rename(columns={"filesize": "size"}, inplace=True)
-        
-    # Drop non-feature identifier columns if present
-    id_cols = [c for c in ["md5", "sha256", "filename", "filepath", "id"] if c in df.columns]
-    if id_cols:
-        df.drop(columns=id_cols, inplace=True)
-        
-    # Drop nulls and duplicates
-    df = df.dropna().drop_duplicates()
+
+    # Remove duplicates and null values
+    df.drop_duplicates(inplace=True)
+    df.dropna(inplace=True)
+
+    # -----------------------------
+    # Timestamp Feature Engineering
+    # -----------------------------
+    if "Timestamp" in df.columns:
+        df["Timestamp"] = pd.to_datetime(df["Timestamp"], errors="coerce")
+
+        df["Hour"] = df["Timestamp"].dt.hour
+        df["Day"] = df["Timestamp"].dt.day
+        df["Month"] = df["Timestamp"].dt.month
+
+        df.drop(columns=["Timestamp"], inplace=True)
+
+    # -----------------------------
+    # Remove Identifier Columns
+    # -----------------------------
+    drop_cols = [
+        "Source_IP",
+        "Destination_IP",
+        "md5",
+        "sha256",
+        "filename",
+        "filepath",
+        "id"
+    ]
+
+    for col in drop_cols:
+        if col in df.columns:
+            df.drop(columns=col, inplace=True)
+
     return df
 
 
-def preprocess_data(df, target_col="label"):
-    """
-    Cleans raw dataframe and separates features (X) and target variable (y).
-    """
-    df_clean = clean_data(df)
-    
-    if target_col in df_clean.columns:
-        X = df_clean.drop(columns=[target_col])
-        y = df_clean[target_col]
+def preprocess_data(df, target_col="Attack_Type"):
+
+    df = clean_data(df)
+
+    if target_col in df.columns:
+        X = df.drop(columns=[target_col])
+        y = df[target_col]
     else:
-        X = df_clean
+        X = df
         y = None
-        
+
     return X, y
 
 
 def fit_transform_encoders(X_train, categorical_cols=None):
-    """
-    Fits LabelEncoders strictly on X_train to prevent data leakage.
-    Returns transformed X_train dataframe and the fitted encoders dictionary.
-    """
+
     if categorical_cols is None:
-        categorical_cols = ["extension"]
-        
-    X_train_encoded = X_train.copy()
+        categorical_cols = []
+
+    X_train = X_train.copy()
+
     encoders = {}
-    
+
     for col in categorical_cols:
-        if col in X_train_encoded.columns:
-            le = LabelEncoder()
-            X_train_encoded[col] = le.fit_transform(X_train_encoded[col].astype(str))
-            encoders[col] = le
-            
-    return X_train_encoded, encoders
 
+        if col in X_train.columns:
 
-def transform_encoders(X_df, encoders):
-    """
-    Transforms evaluation or test feature samples using pre-fitted encoders.
-    Handles unseen target classes safely without throwing exceptions.
-    """
-    X_encoded = X_df.copy()
-    
-    for col, le in encoders.items():
-        if col in X_encoded.columns:
-            known_classes = set(le.classes_)
-            # Map unseen values safely to class 0 (or first class in encoder)
-            X_encoded[col] = X_encoded[col].astype(str).apply(
-                lambda val: le.transform([val])[0] if val in known_classes else 0
+            encoder = LabelEncoder()
+
+            X_train[col] = encoder.fit_transform(
+                X_train[col].astype(str)
             )
-            
-    return X_encoded
+
+            encoders[col] = encoder
+
+    return X_train, encoders
+
+
+def transform_encoders(X_test, encoders):
+
+    X_test = X_test.copy()
+
+    for col, encoder in encoders.items():
+
+        if col in X_test.columns:
+
+            known = set(encoder.classes_)
+
+            X_test[col] = X_test[col].astype(str).apply(
+                lambda x: encoder.transform([x])[0]
+                if x in known else 0
+            )
+
+    return X_test

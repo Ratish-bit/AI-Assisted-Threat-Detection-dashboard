@@ -172,7 +172,23 @@ function loadIOC(){
     });
 
 }
+async function loadThreat(){
 
+    const response = await fetch("/api/threat");
+
+    const data = await response.json();
+
+    document.getElementById("prediction").innerHTML=data.prediction;
+    document.getElementById("risk").innerHTML=data.risk;
+    document.getElementById("confidence").innerHTML=data.confidence+"%";
+    document.getElementById("filename").innerHTML=data.filename;
+    document.getElementById("time").innerHTML=data.scan_time;
+
+}
+
+loadThreat();
+
+setInterval(loadThreat,7000);
 // AI Recommendation
 function updateAISummary(){
 

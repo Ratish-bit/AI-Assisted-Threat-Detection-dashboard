@@ -66,58 +66,47 @@ def create_table():
 
 def save_scan(filename, features, result):
 
-    conn = get_connection()
-    cursor = conn.cursor()
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
 
-    cursor.execute("""
-    INSERT INTO scans(
+        cursor.execute("""
+        INSERT INTO scans(
+            filename,
+            extension,
+            filesize,
+            entropy,
+            md5,
+            sha256,
+            prediction,
+            confidence,
+            risk,
+            recommendation,
+            scan_time
+        )
+        VALUES(?,?,?,?,?,?,?,?,?,?,?)
+        """,(
+            filename,
+            features.get("extension",""),
+            features.get("filesize",0),
+            features.get("entropy",0),
+            features.get("md5",""),
+            features.get("sha256",""),
+            result.get("prediction","Unknown"),
+            result.get("confidence",0),
+            result.get("risk_level","Low"),
+            result.get("recommendation",""),
+            datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+        ))
 
-        filename,
-        extension,
-        filesize,
-        entropy,
-        md5,
-        sha256,
-        prediction,
-        confidence,
-        risk,
-        recommendation,
-        scan_time
+        conn.commit()
+        print("✅ Scan inserted into database")
 
-    )
+    except Exception as e:
+        print("❌ Database Error:", e)
 
-    VALUES(?,?,?,?,?,?,?,?,?,?,?)
-    """,
-
-    (
-
-        filename,
-
-        str(features.get("extension","")),
-
-        int(features.get("filesize",0)),
-
-        float(features.get("entropy",0)),
-
-        str(features.get("md5","")),
-
-        str(features.get("sha256","")),
-
-        str(result.get("prediction","Unknown")),
-
-        float(result.get("confidence",0)),
-
-        str(result.get("risk","Unknown")),
-
-        str(result.get("recommendation","")),
-
-        datetime.now().strftime("%d-%m-%Y %H:%M:%S")
-
-    ))
-
-    conn.commit()
-    conn.close()
-
+    finally:
+        conn.close()
 
 # ----------------------------------
 # Dashboard Statistics
@@ -459,6 +448,5 @@ def get_scans_paginated(page, per_page, search="", risk=""):
     return scans, total
 
 # Backward compatibility
-def add_scan(filename, features, result):
-    return save_scan(filename, features, result)
+
 create_table()

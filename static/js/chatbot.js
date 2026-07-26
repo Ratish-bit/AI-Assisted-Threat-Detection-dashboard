@@ -1,51 +1,120 @@
-// ==========================================
-// AI Security Chatbot
-// ==========================================
+// ===============================================
+// CyberShield AI Chatbot
+// Part 1/4
+// ===============================================
 
-const chatbotBtn = document.getElementById("chatbot-btn");
-const chatbotBox = document.getElementById("chatbot-box");
-const chatArea = document.getElementById("chat-area");
-const userInput = document.getElementById("userMessage");
+// Elements
 
-// ==========================================
-// Toggle Chat Window
-// ==========================================
+const chatToggle = document.getElementById("chat-toggle");
+const chatWindow = document.getElementById("chat-window");
+const closeChat = document.getElementById("close-chat");
 
-if(chatbotBtn){
+const sendBtn = document.getElementById("send-btn");
+const voiceBtn = document.getElementById("voice-btn");
+const clearBtn = document.getElementById("clear-btn");
 
-    chatbotBtn.addEventListener("click",function(){
+const messageInput = document.getElementById("message");
 
-        if(chatbotBox.style.display==="flex"){
+const chatBox = document.getElementById("chat-box");
 
-            chatbotBox.style.display="none";
+const typing = document.getElementById("typing");
+
+// ===============================================
+// Open / Close Chat
+// ===============================================
+
+if(chatToggle){
+
+    chatToggle.onclick=function(){
+
+        if(chatWindow.style.display==="flex"){
+
+            chatWindow.style.display="none";
 
         }
 
         else{
 
-            chatbotBox.style.display="flex";
+            chatWindow.style.display="flex";
 
-            userInput.focus();
+            messageInput.focus();
 
         }
 
-    });
+    };
 
 }
 
-// ==========================================
+if(closeChat){
+
+    closeChat.onclick=function(){
+
+        chatWindow.style.display="none";
+
+    };
+
+}
+
+// ===============================================
+// Scroll
+// ===============================================
+
+function scrollBottom(){
+
+    chatBox.scrollTop=chatBox.scrollHeight;
+
+}
+
+// ===============================================
+// User Message
+// ===============================================
+
+function addUserMessage(message){
+
+    const div=document.createElement("div");
+
+    div.className="user-message";
+
+    div.innerHTML=message;
+
+    chatBox.appendChild(div);
+
+    scrollBottom();
+
+}
+
+// ===============================================
+// Bot Message
+// ===============================================
+
+function addBotMessage(message){
+
+    const div=document.createElement("div");
+
+    div.className="bot-message";
+
+    div.innerHTML=message;
+
+    chatBox.appendChild(div);
+
+    scrollBottom();
+
+}
+// ===============================================
 // Send Message
-// ==========================================
+// ===============================================
 
 function sendMessage(){
 
-    const message=userInput.value.trim();
+    const message = messageInput.value.trim();
 
     if(message==="") return;
 
     addUserMessage(message);
 
-    userInput.value="";
+    messageInput.value="";
+
+    showTyping();
 
     fetch("/chatbot",{
 
@@ -65,79 +134,59 @@ function sendMessage(){
 
     })
 
-    .then(response=>response.json())
+    .then(response=>{
+
+        if(!response.ok){
+
+            throw new Error("Server Error");
+
+        }
+
+        return response.json();
+
+    })
 
     .then(data=>{
+
+        hideTyping();
 
         addBotMessage(data.reply);
 
     })
 
-    .catch(()=>{
+    .catch(error=>{
 
-        addBotMessage(
+        console.error(error);
 
-            "⚠ Unable to contact AI Assistant."
+        hideTyping();
 
-        );
+        addBotMessage("⚠ Unable to contact CyberShield AI.");
 
     });
 
 }
 
-// ==========================================
-// User Message
-// ==========================================
+// ===============================================
+// Send Button
+// ===============================================
 
-function addUserMessage(message){
+if(sendBtn){
 
-    const div=document.createElement("div");
+    sendBtn.onclick=function(){
 
-    div.className="user-msg";
+        sendMessage();
 
-    div.innerHTML=message;
-
-    chatArea.appendChild(div);
-
-    scrollChat();
+    };
 
 }
 
-// ==========================================
-// Bot Message
-// ==========================================
-
-function addBotMessage(message){
-
-    const div=document.createElement("div");
-
-    div.className="bot-msg";
-
-    div.innerHTML=message;
-
-    chatArea.appendChild(div);
-
-    scrollChat();
-
-}
-
-// ==========================================
-// Scroll Bottom
-// ==========================================
-
-function scrollChat(){
-
-    chatArea.scrollTop=chatArea.scrollHeight;
-
-}
-
-// ==========================================
+// ===============================================
 // Enter Key
-// ==========================================
+// ===============================================
 
-if(userInput){
+if(messageInput){
 
-    userInput.addEventListener("keypress",function(e){
+    messageInput.addEventListener("keypress",function(e){
 
         if(e.key==="Enter"){
 
@@ -151,60 +200,258 @@ if(userInput){
 
 }
 
-// ==========================================
-// Welcome Message
-// ==========================================
+// ===============================================
+// Suggestions
+// ===============================================
 
-document.addEventListener("DOMContentLoaded",function(){
+function askSuggestion(text){
 
-    if(chatArea){
+    messageInput.value=text;
+
+    sendMessage();
+
+}
+
+// Make function available to HTML onclick
+window.askSuggestion = askSuggestion;
+
+// ===============================================
+// Voice Recognition
+// ===============================================
+
+if (voiceBtn) {
+
+    const SpeechRecognition =
+        window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (SpeechRecognition) {
+
+        const recognition = new SpeechRecognition();
+
+        recognition.lang = "en-US";
+        recognition.interimResults = false;
+        recognition.maxAlternatives = 1;
+
+        voiceBtn.onclick = function () {
+
+            voiceBtn.innerHTML = "🎙️";
+
+            recognition.start();
+
+        };
+
+        recognition.onresult = function (event) {
+
+            const transcript = event.results[0][0].transcript;
+
+            messageInput.value = transcript;
+
+            voiceBtn.innerHTML = "🎤";
+
+            sendMessage();
+
+        };
+
+        recognition.onerror = function () {
+
+            voiceBtn.innerHTML = "🎤";
+
+            addBotMessage("⚠ Voice recognition failed.");
+
+        };
+
+        recognition.onend = function () {
+
+            voiceBtn.innerHTML = "🎤";
+
+        };
+
+    } else {
+
+        voiceBtn.onclick = function () {
+
+            addBotMessage("⚠ Voice recognition is not supported in this browser.");
+
+        };
+
+    }
+
+}
+
+// ===============================================
+// Clear Chat
+// ===============================================
+
+if (clearBtn) {
+
+    clearBtn.onclick = function () {
+
+        chatBox.innerHTML = "";
 
         addBotMessage(
-
-            "👋 Hello! I'm your AI Security Assistant.<br><br>" +
-
-            "I can help you with:<br>" +
-
-            "• Malware Detection<br>" +
-
-            "• Threat Intelligence<br>" +
-
-            "• File Scan Results<br>" +
-
-            "• Network Security<br>" +
-
-            "• AI Threat Analysis"
-
+            "👋 Hello! I am <b>CyberShield AI</b>.<br><br>" +
+            "Ask me anything about:<br>" +
+            "• Malware<br>" +
+            "• Phishing<br>" +
+            "• Trojans<br>" +
+            "• Ransomware<br>" +
+            "• SQL Injection<br>" +
+            "• DDoS<br>" +
+            "• Network Security"
         );
+
+    };
+
+}
+
+// ===============================================
+// Auto Focus
+// ===============================================
+
+if (messageInput) {
+
+    messageInput.addEventListener("click", function () {
+
+        this.focus();
+
+    });
+
+}
+
+// ===============================================
+// Auto Scroll on Load
+// ===============================================
+
+window.addEventListener("load", function () {
+
+    scrollBottom();
+
+});
+
+// ===============================================
+// Welcome Message
+// ===============================================
+
+document.addEventListener("DOMContentLoaded", function () {
+
+    if (chatBox.children.length <= 1) {
+
+        setTimeout(function () {
+
+            addBotMessage(
+                "💡 Tip: You can ask me questions like:<br><br>" +
+                "• What is Malware?<br>" +
+                "• Explain Phishing<br>" +
+                "• How to prevent ransomware?<br>" +
+                "• Explain SQL Injection<br>" +
+                "• How do I secure my network?"
+            );
+
+        }, 1200);
 
     }
 
 });
 
-const chatToggle = document.getElementById("chat-toggle");
-const chatWindow = document.getElementById("chat-window");
-const closeChat = document.getElementById("close-chat");
+// ===============================================
+// Typing Animation Helpers
+// ===============================================
 
-if(chatToggle){
-    chatToggle.onclick = function(){
+function showTyping() {
 
-        if(chatWindow.style.display==="flex"){
+    typing.style.display = "block";
 
-            chatWindow.style.display="none";
+    scrollBottom();
 
-        }else{
+}
 
-            chatWindow.style.display="flex";
+function hideTyping() {
+
+    typing.style.display = "none";
+
+}
+
+// ===============================================
+// Keyboard Shortcut
+// Ctrl + /
+// ===============================================
+
+document.addEventListener("keydown", function (e) {
+
+    if (e.ctrlKey && e.key === "/") {
+
+        if (chatWindow.style.display === "flex") {
+
+            chatWindow.style.display = "none";
+
+        } else {
+
+            chatWindow.style.display = "flex";
+
+            messageInput.focus();
 
         }
 
-    };
+    }
+
+});
+
+// ===============================================
+// Save Chat (Current Session)
+// ===============================================
+
+function saveChat() {
+
+    sessionStorage.setItem("cybershield_chat", chatBox.innerHTML);
+
 }
 
-if(closeChat){
-    closeChat.onclick=function(){
+function loadChat() {
 
-        chatWindow.style.display="none";
+    const data = sessionStorage.getItem("cybershield_chat");
 
-    };
+    if (data) {
+
+        chatBox.innerHTML = data;
+
+        scrollBottom();
+
+    }
+
 }
+
+// Save whenever a new message is added
+
+const originalUser = addUserMessage;
+
+addUserMessage = function (msg) {
+
+    originalUser(msg);
+
+    saveChat();
+
+};
+
+const originalBot = addBotMessage;
+
+addBotMessage = function (msg) {
+
+    originalBot(msg);
+
+    saveChat();
+
+};
+
+// ===============================================
+// Initialize
+// ===============================================
+
+window.onload = function () {
+
+    loadChat();
+
+    scrollBottom();
+
+    console.log("✅ CyberShield AI Loaded Successfully");
+
+};

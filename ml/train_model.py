@@ -3,110 +3,161 @@ import joblib
 import pandas as pd
 from xgboost import XGBClassifier
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
 
 from preprocess import preprocess_data, fit_transform_encoders, transform_encoders
 from evaluate import evaluate_model
 
 """
-Machine Learning Model Training Pipeline for Network Threat Detection.
-
-Pipeline Steps:
-1. Dataset Loading & Path Resolution
-2. Data Cleaning & Feature / Target Separation
-3. Stratified Train / Test Split (Prevents Data Leakage)
-4. Feature Encoding (Fitted on Train Set only)
-5. Model Building & Training (XGBClassifier)
-6. Model Evaluation (via ml/evaluate.py)
-7. Save Artifacts (threat_model.pkl & label_encoder.pkl)
+Machine Learning Model Training Pipeline for Network Threat Detection
 """
 
 def main():
+
     # -------------------------------------------------------------
-    # 1. Dataset Path Resolution & Loading
+    # 1. Load Dataset
     # -------------------------------------------------------------
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    dataset_path = os.path.join(project_root, "dataset", "malware_dataset.csv")
+    dataset_path = os.path.join(project_root, "ml", "dataset.csv")
 
     print(f"Loading Dataset from: {dataset_path}")
+
     if not os.path.exists(dataset_path):
-        raise FileNotFoundError(f"Dataset not found at path: {dataset_path}")
+        raise FileNotFoundError(f"Dataset not found: {dataset_path}")
 
     df = pd.read_csv(dataset_path)
-    print(f"Dataset Loaded Successfully! Shape: {df.shape}")
-    print("\nDataset Preview:")
+
     print(df.head())
+    print(df.columns)
+    print(df["Attack_Type"].value_counts())
 
     # -------------------------------------------------------------
-    # 2. Data Cleaning & Preprocessing (Features vs Target Separation)
+    # 2. Convert Timestamp to Numeric Features
     # -------------------------------------------------------------
-    X, y = preprocess_data(df, target_col="label")
-    print(f"\nExtracted Features: {list(X.columns)}")
+    df["Timestamp"] = pd.to_datetime(df["Timestamp"])
+
+    df["Hour"] = df["Timestamp"].dt.hour
+    df["Day"] = df["Timestamp"].dt.day
+    df["Month"] = df["Timestamp"].dt.month
+
+    # Remove original timestamp
+    df.drop(columns=["Timestamp"], inplace=True)
 
     # -------------------------------------------------------------
-    # 3. Train/Test Split (Stratified to maintain class distributions)
+    # 3. Remove IP Address Columns
+    # -------------------------------------------------------------
+    df.drop(columns=["Source_IP", "Destination_IP"], inplace=True)
+
+    # -------------------------------------------------------------
+    # 4. Feature / Target Separation
+    # -------------------------------------------------------------
+    X, y = preprocess_data(df, target_col="Attack_Type")
+
+    print("\nExtracted Features:")
+    print(X.columns.tolist())
+
+    # -------------------------------------------------------------
+    # 5. Train/Test Split
     # -------------------------------------------------------------
     X_train, X_test, y_train, y_test = train_test_split(
         X,
         y,
-        test_size=0.2,
+        test_size=0.20,
         random_state=42,
-        stratify=y if len(y.unique()) > 1 else None
+        stratify=y
     )
-    print(f"\nTrain set size: {len(X_train)} samples | Test set size: {len(X_test)} samples")
+
+    print(f"\nTrain Samples : {len(X_train)}")
+    print(f"Test Samples  : {len(X_test)}")
 
     # -------------------------------------------------------------
-    # 4. Feature Encoding (Fit ON TRAIN ONLY to prevent Data Leakage)
+    # 6. Encode Categorical Features
     # -------------------------------------------------------------
-    X_train_encoded, encoders = fit_transform_encoders(X_train, categorical_cols=["extension"])
-    X_test_encoded = transform_encoders(X_test, encoders)
+    categorical_cols = [
+        "Protocol",
+        "Country",
+        "Threat_Level"
+    ]
+
+    X_train_encoded, encoders = fit_transform_encoders(
+        X_train,
+        categorical_cols
+    )
+
+    X_test_encoded = transform_encoders(
+        X_test,
+        encoders
+    )
+
+    print("\nFeature Data Types")
+    print(X_train_encoded.dtypes)
 
     # -------------------------------------------------------------
-    # 5. Build and Train Model (XGBClassifier)
+    # 7. Encode Labels
     # -------------------------------------------------------------
-    # XGBoost is selected as it excels at tabular threat feature data, handles
-    # non-linear relations well, and provides high precision & recall.
-    print("\nBuilding XGBoost Threat Detection Model...")
+    label_encoder = LabelEncoder()
+
+    y_train = label_encoder.fit_transform(y_train)
+    y_test = label_encoder.transform(y_test)
+
+    print("\nAttack Classes:")
+    print(label_encoder.classes_)
+
+    # -------------------------------------------------------------
+    # 8. Build Model
+    # -------------------------------------------------------------
     model = XGBClassifier(
+        objective="multi:softprob",
+        num_class=len(label_encoder.classes_),
         n_estimators=300,
-        max_depth=8,
         learning_rate=0.05,
+        max_depth=8,
         subsample=0.8,
         colsample_bytree=0.8,
-        objective="binary:logistic",
         random_state=42,
-        eval_metric="logloss"
+        eval_metric="mlogloss"
     )
 
+    # -------------------------------------------------------------
+    # 9. Train
+    # -------------------------------------------------------------
     print("Training Model...")
+
+    print("\nColumn Types:")
+    print(X_train_encoded.dtypes)
+
+    print("\nRemaining Object Columns:")
+    print(X_train_encoded.select_dtypes(include="object").columns.tolist())
+
     model.fit(X_train_encoded, y_train)
+
     print("Model Training Completed Successfully!")
 
     # -------------------------------------------------------------
-    # 6. Evaluation (Using ml/evaluate.py module)
+    # 10. Evaluate
     # -------------------------------------------------------------
-    print("\nEvaluating Model Performance...")
-    metrics = evaluate_model(model, X_test_encoded, y_test)
+    print("\nEvaluating Model...")
+
+    evaluate_model(
+        model,
+        X_test_encoded,
+        y_test
+    )
 
     # -------------------------------------------------------------
-    # 7. Save Artifacts (threat_model.pkl & label_encoder.pkl)
+    # 11. Save Model
     # -------------------------------------------------------------
     ml_dir = os.path.join(project_root, "ml")
+
     os.makedirs(ml_dir, exist_ok=True)
 
-    model_save_path = os.path.join(ml_dir, "threat_model.pkl")
-    label_encoder_path = os.path.join(ml_dir, "label_encoder.pkl")
-    legacy_encoder_path = os.path.join(ml_dir, "encoders.pkl")
+    joblib.dump(model, os.path.join(ml_dir, "threat_model.pkl"))
+    joblib.dump(encoders, os.path.join(ml_dir, "encoders.pkl"))
+    joblib.dump(label_encoder, os.path.join(ml_dir, "label_encoder.pkl"))
 
-    # Save Model (.pkl)
-    joblib.dump(model, model_save_path)
-    print(f"\nTrained model saved to: {model_save_path}")
+    print("\nModel Saved Successfully.")
 
-    # Save Label Encoder (.pkl)
-    joblib.dump(encoders, label_encoder_path)
-    joblib.dump(encoders, legacy_encoder_path)  # Dual save for legacy predictor compatibility
-    print(f"Label Encoders saved to: {label_encoder_path} and {legacy_encoder_path}")
-
-    print("\n[SUCCESS] ML Training Pipeline Execution Finished!")
+    print("\nTraining Pipeline Finished Successfully.")
 
 if __name__ == "__main__":
     main()
