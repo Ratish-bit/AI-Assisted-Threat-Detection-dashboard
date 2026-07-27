@@ -326,9 +326,20 @@ login_manager.login_view = "login"
 @login_manager.user_loader
 def load_user(user_id):
 
-    if user_id in users:
-        role = users[user_id]["role"]
-        return User(user_id, role)
+    conn = sqlite3.connect("database/threat.db")
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT username, role FROM users WHERE username=?",
+        (user_id,)
+    )
+
+    user = cursor.fetchone()
+    conn.close()
+
+    if user:
+        return User(user["username"], user["role"])
 
     return None
 
