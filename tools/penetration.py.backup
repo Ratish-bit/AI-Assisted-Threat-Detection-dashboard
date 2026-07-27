@@ -12,16 +12,11 @@ def get_security_report(target="127.0.0.1"):
     try:
 
         result = subprocess.run(
-            [nmap_path, "-F", target],
+            [nmap_path, "-F", "-sV", target],
             capture_output=True,
             text=True,
             timeout=60
         )
-
-        if result.returncode != 0:
-            return {
-                "Error": result.stderr.strip()
-            }
 
         output = result.stdout
 

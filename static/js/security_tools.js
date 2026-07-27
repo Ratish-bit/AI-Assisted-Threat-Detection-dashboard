@@ -71,7 +71,7 @@ function analyzePCAP() {
     }
 
     let formData = new FormData();
-    formData.append("pcap", file);
+    formData.append("pcap_file", file);
 
     document.getElementById("toolStatus").innerHTML = "Analyzing...";
 

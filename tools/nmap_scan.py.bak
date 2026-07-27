@@ -80,14 +80,18 @@ def run_nmap_scan(target):
     try:
 
         command = [
-            nmap_path,
-            "-n",
-            "-Pn",
-            "-F",
-            "--open",
-            target
-        ]
 
+            nmap_path,
+
+            "-sV",      # Version Detection
+
+            "-F",       # Fast Scan
+
+            "--open",   # Show only open ports
+
+            target
+
+        ]
 
         result = subprocess.run(
 
