@@ -190,7 +190,8 @@ ALLOWED_EXTENSIONS = {
     'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', # Documents
     'zip', 'rar', '7z', 'tar', 'gz',            # Archives
     'csv', 'json', 'txt',                       # Data & Logs
-    'pcap', 'pcapng', 'png', 'csv'                            # Packet Captures
+    'pcap', 'pcapng', 'png', 'csv','xml','sql','pcapng',
+    'jpg', 'jpeg', 'png', 'gif'                             # Packet Captures
 }
 
 def allowed_file(filename: str) -> bool:
@@ -1112,8 +1113,33 @@ def scan_file(filename):
     """Executes ML threat scanning on saved uploads."""
     filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
     features = extract_features(filepath)
-    result = predict(features)
-    save_scan(filename, features, result)
+
+    result = predictor_instance.predict(features)
+
+    # Collect file metadata
+    filesize = os.path.getsize(filepath)
+    extension = os.path.splitext(filename)[1]
+    entropy = calculate_entropy(filepath)
+
+    with open(filepath, "rb") as f:
+        data = f.read()
+
+    md5 = hashlib.md5(data).hexdigest()
+    sha256 = hashlib.sha256(data).hexdigest()
+
+    # Add metadata into features dictionary
+    features["filesize"] = filesize
+    features["extension"] = extension
+    features["entropy"] = entropy
+    features["md5"] = md5
+    features["sha256"] = sha256
+
+    # Save to database
+    save_scan(
+        filename,
+        features,
+        result
+    )
 
     return render_template(
         "result.html",
@@ -1505,5 +1531,9 @@ from database.db import init_db
 if __name__ == "__main__":
     print("Initializing database...")
     init_db()
+
     app.run(host="0.0.0.0", port=5000, debug=True)
+
+
+
 
