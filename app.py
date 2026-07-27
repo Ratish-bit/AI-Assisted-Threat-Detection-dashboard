@@ -1,5 +1,6 @@
 import os
 import sqlite3
+import hashlib 
 import pandas as pd
 import plotly.express as px
 import csv
@@ -128,7 +129,7 @@ from auth import User, users
 # Machine Learning
 # -----------------------------
 
-from ml.feature_extractor import extract_features
+from ml.feature_extractor import extract_features, calculate_entropy
 from ml.predictor import ThreatPredictor
 
 predictor_instance = ThreatPredictor()
@@ -218,18 +219,13 @@ def save_scan(filename, features, result):
     """
     Persists threat scan result into SQLite database.
     """
-    from database.scan import add_scan
+    from database.scan import save_scan as db_save_scan
+
     try:
-        add_scan(
-            filename=filename,
-            features=features,
-            prediction=result.get("prediction", "Unknown"),
-            confidence=result.get("confidence", 0.0),
-            risk=result.get("risk_level", result.get("risk", "Low")),
-            recommendation=result.get("recommendation", "")
-        )
+        db_save_scan(filename, features, result)
     except Exception as db_err:
         print(f"Warning: Scan DB record insertion failed: {db_err}")
+
 
 @app.route("/api/predict", methods=["POST"])
 def api_predict():
