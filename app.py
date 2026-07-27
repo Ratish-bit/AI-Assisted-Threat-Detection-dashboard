@@ -193,7 +193,8 @@ ALLOWED_EXTENSIONS = {
     'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', # Documents
     'zip', 'rar', '7z', 'tar', 'gz',            # Archives
     'csv', 'json', 'txt',                       # Data & Logs
-    'pcap', 'pcapng', 'png', 'csv'                            # Packet Captures
+    'pcap', 'pcapng', 'png', 'csv','xml','sql','pcapng',
+    'jpg', 'jpeg', 'png', 'gif'                             # Packet Captures
 }
 
 def allowed_file(filename: str) -> bool:
@@ -1112,7 +1113,8 @@ def scan_file(filename):
 
     # Extract features for ML
     features = extract_features(filepath)
-
+    print("Extracted Features:")
+    print(features)
     # Run prediction
     result = predictor_instance.predict(features)
 
@@ -1629,7 +1631,5 @@ from database.db import init_db
 if __name__ == "__main__":
     print("Initializing database...")
     init_db()
-    app.run(debug=True)
+    app.run(debug=True, use_reloader=False)
 
-if __name__ == "__main__":
-    app.run(debug=True)
