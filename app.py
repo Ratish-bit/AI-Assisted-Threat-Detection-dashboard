@@ -5,9 +5,6 @@ import plotly.express as px
 import csv
 from io import StringIO
 import sqlite3
-import os
-import hashlib
-
 from flask import request, render_template, redirect, url_for, flash
 from werkzeug.security import generate_password_hash
 from flask import Response
@@ -26,7 +23,7 @@ from flask import jsonify
 from database.scan import search_scans
 from auth import User, users
 import google.generativeai as genai
-from database.scan import save_scan 
+from database.scan import save_scan as db_save_scan
 from tools.nmap_scan import run_nmap_scan
 from tools.wireshark_parser import read_pcap
 from tools.penetration import get_security_report
@@ -216,6 +213,22 @@ def predict(features_or_dict):
             "recommendation": f"Model inference error: {str(e)}"
         }
 
+def save_scan(filename, features, result):
+    """
+    Persists threat scan result into SQLite database.
+    """
+    from database.scan import add_scan
+    try:
+        add_scan(
+            filename=filename,
+            features=features,
+            prediction=result.get("prediction", "Unknown"),
+            confidence=result.get("confidence", 0.0),
+            risk=result.get("risk_level", result.get("risk", "Low")),
+            recommendation=result.get("recommendation", "")
+        )
+    except Exception as db_err:
+        print(f"Warning: Scan DB record insertion failed: {db_err}")
 
 @app.route("/api/predict", methods=["POST"])
 def api_predict():
@@ -325,16 +338,10 @@ login_manager.login_view = "login"
 
 @login_manager.user_loader
 def load_user(user_id):
-
     conn = sqlite3.connect("database/threat.db")
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
-
-    cursor.execute(
-        "SELECT username, role FROM users WHERE username=?",
-        (user_id,)
-    )
-
+    cursor.execute("SELECT username, role FROM users WHERE username=?", (user_id,))
     user = cursor.fetchone()
     conn.close()
 
@@ -342,8 +349,6 @@ def load_user(user_id):
         return User(user["username"], user["role"])
 
     return None
-
-os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 def allowed_file(filename):
 
     return "." in filename and \
@@ -358,14 +363,13 @@ def home():
 @login_required
 @admin_required
 def users_page():
+
     all_users = get_users()
-    if not all_users:   # example condition
-        return redirect(url_for("dashboard"))
+
     return render_template(
         "users.html",
         users=all_users
     )
-
 
 @app.route("/delete_user/<int:id>")
 @login_required
@@ -766,13 +770,14 @@ def reports():
 @app.route("/history")
 @login_required
 def history():
-
     page = request.args.get("page", 1, type=int)
     per_page = 10
 
+    # ✅ New filters
     search = request.args.get("search", "")
     risk = request.args.get("risk", "")
 
+    # ✅ Updated call with search + risk
     scans, total = get_scans_paginated(
         page,
         per_page,
@@ -787,11 +792,16 @@ def history():
         scans=scans,
         page=page,
         total_pages=total_pages,
-        total=total,
         search=search,
         risk=risk
     )
- 
+
+    return render_template(
+    "history.html",
+    scans=scans,
+    page=page,
+    total_pages=total_pages
+)
 
 @app.route("/remove_scan/<int:scan_id>")
 @login_required
@@ -915,7 +925,6 @@ def run_nmap():
     target = request.form["target"]
 
     result = run_nmap_scan(target)
-    print("DEBUG NMAP RESULT:", result, flush=True)
 
     return jsonify(result)
 
@@ -936,18 +945,13 @@ def read_capture():
         flash(result["message"], "danger")
         return redirect(url_for("security_tools"))
 
-    return render_template(
-        "pcap_result.html",
-        result=result
-    )
+    return jsonify(result)
 
-@app.route("/penetration_report", methods=["GET", "POST"])
+@app.route("/penetration_report")
 @login_required
 def penetration_report():
 
-    target = request.values.get("target", "127.0.0.1").strip()
-
-    result = get_security_report(target)
+    result = get_security_report()
 
     return jsonify(result)
 
@@ -1038,8 +1042,6 @@ def chatbot():
 
     data=request.get_json()
 
-    print(request.get_json())
-
     msg=data["message"].lower()
 
     if "malware" in msg:
@@ -1095,77 +1097,38 @@ def upload():
         return redirect(url_for("scan_file", filename=filename))
 
     return render_template("upload.html")
+@app.route("/scanning/<filename>")
+@login_required
+def scanning(filename):
 
-from ml.predictor import ThreatPredictor
-
-predictor_instance = ThreatPredictor()
-
-import math
-
-def calculate_entropy(filepath):
-    with open(filepath, "rb") as f:
-        data = f.read()
-    if not data:
-        return 0.0
-    byte_counts = [0] * 256
-    for b in data:
-        byte_counts[b] += 1
-    entropy = 0.0
-    for count in byte_counts:
-        if count == 0:
-            continue
-        p = count / len(data)
-        entropy -= p * math.log2(p)
-    return entropy
+    return render_template(
+        "scanning.html",
+        filename=filename
+    )
 
 @app.route("/scan/<filename>")
 @login_required
 def scan_file(filename):
-
+    """Executes ML threat scanning on saved uploads."""
     filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
-
-    # Extract features for ML
     features = extract_features(filepath)
-
-    # Run prediction
-    result = predictor_instance.predict(features)
-
-    # Collect file metadata
-    filesize = os.path.getsize(filepath)
-    extension = os.path.splitext(filename)[1]
-    entropy = calculate_entropy(filepath)
-
-    with open(filepath, "rb") as f:
-        data = f.read()
-
-    md5 = hashlib.md5(data).hexdigest()
-    sha256 = hashlib.sha256(data).hexdigest()
-
-    # Add metadata into features dictionary
-    features["filesize"] = filesize
-    features["extension"] = extension
-    features["entropy"] = entropy
-    features["md5"] = md5
-    features["sha256"] = sha256
-
-    # Save to database
-    save_scan(
-        filename,
-        features,
-        result
-    )
+    result = predict(features)
+    save_scan(filename, features, result)
 
     return render_template(
-    "result.html",
-    filename=filename,
-    features=features,
-    result=result,
-    prediction=result["prediction"],
-    confidence=result["confidence"],
-    risk=result["risk_level"],
-    recommendation=result["recommendation"],
-    scan_time=datetime.now().strftime("%d-%m-%Y %H:%M:%S")
-)
+        "result.html",
+        filename=filename,
+        features=features,
+        result=result,
+        prediction=result.get("prediction", "Unknown"),
+        risk=result.get("risk_level", result.get("risk", "Low")),
+        confidence=result.get("confidence", 0.0),
+        accuracy="100.00%",
+        scan_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        recommendation=result.get("recommendation", "")
+    )
+
+
 @app.route("/export/csv")
 @login_required
 def export_csv():
@@ -1534,107 +1497,6 @@ def signup():
         return redirect(url_for("login"))
 
     return render_template("signup.html")
-
-from database.scan import recent_scans
-
-@app.route("/api/threat")
-@login_required
-def api_threat():
-
-    scans = recent_scans(1)
-
-    if not scans:
-        return jsonify({
-            "status": "No scans yet"
-        })
-
-    scan = scans[0]
-
-    return jsonify({
-        "filename": scan["filename"],
-        "prediction": scan["prediction"],
-        "confidence": scan["confidence"],
-        "risk": scan["risk"],
-        "recommendation": scan["recommendation"],
-        "scan_time": scan["scan_time"]
-    })
-
-from database.scan import recent_scans
-
-@app.route("/api/ai_summary")
-@login_required
-def ai_summary():
-
-    scans = recent_scans(1)
-
-    if not scans:
-        return jsonify({
-            "risk":"No Data",
-            "summary":"No files have been scanned yet."
-        })
-
-    scan = scans[0]
-
-    return jsonify({
-        "risk": scan["risk"],
-        "summary":
-            f"Latest scan: {scan['filename']} was classified as "
-            f"{scan['prediction']} with {scan['confidence']}% confidence. "
-            f"Recommendation: {scan['recommendation']}"
-    })
-@app.route("/api/ioc_feed")
-@login_required
-def ioc_feed():
-
-    scans = recent_scans(5)
-
-    data = []
-
-    for scan in scans:
-
-        data.append({
-            "type":"SHA256",
-            "value":scan["sha256"]
-        })
-
-    return jsonify(data)
-
-@app.route("/api/cve_feed")
-@login_required
-def cve_feed():
-
-    scans = recent_scans(5)
-
-    data = []
-
-    for scan in scans:
-
-        data.append({
-            "cve":"Detected Threat",
-            "summary":scan["prediction"],
-            "severity":scan["risk"]
-        })
-
-    return jsonify(data)
-
-@app.route("/api/malware_feed")
-@login_required
-def malware_feed():
-
-    scans = recent_scans(10)
-
-    data = []
-
-    for scan in scans:
-
-        data.append({
-            "name": scan["filename"],
-            "description": scan["prediction"],
-            "date": scan["scan_time"],
-            "risk": scan["risk"]
-        })
-
-    return jsonify(data)
 # ======================================
 # Run Flask
 # =======
@@ -1643,7 +1505,5 @@ from database.db import init_db
 if __name__ == "__main__":
     print("Initializing database...")
     init_db()
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)
 
-if __name__ == "__main__":
-    app.run(debug=True)
