@@ -342,7 +342,7 @@ def allowed_file(filename):
 @app.route("/")
 def home():
 
-    return redirect(url_for("login"))
+    return redirect(url_for("threat_intel"))
 
 @app.route("/users")
 @login_required
@@ -939,50 +939,10 @@ def penetration_report():
     return jsonify(result)
 
 @app.route("/threat_intel")
-@login_required
 def threat_intel():
-
-    threats = [
-
-        {
-            "time": "19:05",
-            "name": "Ransomware Campaign",
-            "severity": "Critical",
-            "status": "Active"
-        },
-
-        {
-            "time": "18:50",
-            "name": "Phishing Domain",
-            "severity": "High",
-            "status": "Blocked"
-        },
-
-        {
-            "time": "18:35",
-            "name": "Malware Hash",
-            "severity": "Medium",
-            "status": "Detected"
-        },
-
-        {
-            "time": "18:20",
-            "name": "Botnet IP",
-            "severity": "Critical",
-            "status": "Active"
-        },
-
-        {
-            "time": "18:05",
-            "name": "SQL Injection Attempt",
-            "severity": "High",
-            "status": "Blocked"
-        }
-
-    ]
-
+    threats = fetch_live_malware()
     return render_template(
-        "threat_intel.html",
+        "threat_intelligence.html",
         threats=threats
     )
 # ======================================
@@ -1548,81 +1508,38 @@ def api_threat():
     })
 
 from database.scan import recent_scans
-
+from tools.threat_fetcher import fetch_live_malware, fetch_live_cves, fetch_live_iocs
 @app.route("/api/ai_summary")
-@login_required
 def ai_summary():
-
-    scans = recent_scans(1)
-
-    if not scans:
-        return jsonify({
-            "risk":"No Data",
-            "summary":"No files have been scanned yet."
-        })
-
-    scan = scans[0]
-
-    return jsonify({
-        "risk": scan["risk"],
-        "summary":
-            f"Latest scan: {scan['filename']} was classified as "
-            f"{scan['prediction']} with {scan['confidence']}% confidence. "
-            f"Recommendation: {scan['recommendation']}"
+    cves = fetch_live_cves()
+    top_cve = cves[0]["cve"] if cves else "active exploits"
+    res = jsonify({
+        "risk": "High",
+        "summary": f"Live Threat Intelligence active. Real-time feed detected active global exploits including {top_cve}. Verify network rules and secure exposed endpoints."
     })
+    res.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return res
+
+
 @app.route("/api/ioc_feed")
-@login_required
 def ioc_feed():
+    res = jsonify(fetch_live_iocs())
+    res.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return res
 
-    scans = recent_scans(5)
-
-    data = []
-
-    for scan in scans:
-
-        data.append({
-            "type":"SHA256",
-            "value":scan["sha256"]
-        })
-
-    return jsonify(data)
 
 @app.route("/api/cve_feed")
-@login_required
 def cve_feed():
+    res = jsonify(fetch_live_cves())
+    res.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return res
 
-    scans = recent_scans(5)
-
-    data = []
-
-    for scan in scans:
-
-        data.append({
-            "cve":"Detected Threat",
-            "summary":scan["prediction"],
-            "severity":scan["risk"]
-        })
-
-    return jsonify(data)
 
 @app.route("/api/malware_feed")
-@login_required
 def malware_feed():
-
-    scans = recent_scans(10)
-
-    data = []
-
-    for scan in scans:
-
-        data.append({
-            "name": scan["filename"],
-            "description": scan["prediction"],
-            "date": scan["scan_time"],
-            "risk": scan["risk"]
-        })
-
-    return jsonify(data)
+    res = jsonify(fetch_live_malware())
+    res.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return res
 # ======================================
 # Run Flask
 # =======
