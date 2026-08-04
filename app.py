@@ -1544,7 +1544,61 @@ def malware_feed():
 # Run Flask
 # =======
 from database.db import init_db
+@app.route("/threat_database")
+@login_required
+def threat_database():
+    threats = [
+        {
+            "name": "Trojan",
+            "severity": "High",
+            "description": "Malicious software disguised as legitimate software."
+        },
+        {
+            "name": "Ransomware",
+            "severity": "Critical",
+            "description": "Encrypts files and demands ransom."
+        },
+        {
+            "name": "Phishing",
+            "severity": "Medium",
+            "description": "Attempts to steal user credentials."
+        },
+        {
+            "name": "Spyware",
+            "severity": "Medium",
+            "description": "Secretly monitors user activity."
+        },
+        {
+            "name": "Worm",
+            "severity": "High",
+            "description": "Self-replicating malware."
+        }
+    ]
 
+    return render_template(
+        "threat_database.html",
+        threats=threats
+    )
+
+import random
+
+@app.route("/live_monitor")
+@login_required
+def live_monitor():
+
+    return render_template(
+
+        "live_monitor.html",
+
+        cpu=random.randint(10,80),
+
+        ram=random.randint(20,90),
+
+        scans=random.randint(1,5),
+
+        threats=random.randint(0,3)
+
+    )
 if __name__ == "__main__":
     print("Initializing database...")
     init_db()
