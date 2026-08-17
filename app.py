@@ -24,7 +24,7 @@ from flask import jsonify
 from database.scan import search_scans
 from auth import User, users
 
-import google.generativeai as genai
+
 from database.scan import save_scan as db_save_scan
 
 
