@@ -181,4 +181,20 @@
 
 <script src="{{ url_for('static', filename='js/threat_intel.js') }}"></script>
 
+<script>
+    // Auto-refresh the threat feeds every 30 seconds
+    setInterval(function() {
+        if (typeof loadFeeds === "function") {
+            loadFeeds();
+        } else if (typeof fetchMalwareFeed === "function") {
+            fetchMalwareFeed();
+            fetchCveFeed();
+            fetchIocFeed();
+            fetchAiSummary();
+        } else {
+            window.location.reload();
+        }
+    }, 30000);
+</script>
+
 {% endblock %}

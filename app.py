@@ -23,8 +23,11 @@ from reportlab.lib import colors
 from flask import jsonify
 from database.scan import search_scans
 from auth import User, users
+
 import google.generativeai as genai
 from database.scan import save_scan as db_save_scan
+
+
 from tools.nmap_scan import run_nmap_scan
 from tools.wireshark_parser import read_pcap
 from tools.penetration import get_security_report
@@ -119,23 +122,14 @@ from flask_login import (
 
 import config
 
-# -----------------------------
-# Authentication
-# -----------------------------
-
 from auth import User, users
 
-# -----------------------------
-# Machine Learning
-# -----------------------------
 
-from ml.feature_extractor import extract_features, calculate_entropy
+from ml.feature_extractor import extract_features
+
 from ml.predictor import ThreatPredictor
 
 predictor_instance = ThreatPredictor()
-# -----------------------------
-# Database
-# -----------------------------
 
 from database.scan import (
 
@@ -164,18 +158,19 @@ from database.scan import (
     security_score
 
 )
-# ======================================
-# Flask Configuration
-# ======================================
 
 app = Flask(__name__)
 
-
+from google import genai
+from dotenv import load_dotenv
 import os
 
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-genai.configure(api_key=GOOGLE_API_KEY)
-model = genai.GenerativeModel("gemini-1.5-flash")
+load_dotenv()
+
+
+client = genai.Client(
+    api_key=os.getenv("GEMINI_API_KEY")
+)
 
 create_table()
 
@@ -354,7 +349,7 @@ def allowed_file(filename):
 @app.route("/")
 def home():
 
-    return redirect(url_for("login"))
+    return redirect(url_for("threat_intel"))
 
 @app.route("/users")
 @login_required
@@ -953,50 +948,10 @@ def penetration_report():
     return jsonify(result)
 
 @app.route("/threat_intel")
-@login_required
 def threat_intel():
-
-    threats = [
-
-        {
-            "time": "19:05",
-            "name": "Ransomware Campaign",
-            "severity": "Critical",
-            "status": "Active"
-        },
-
-        {
-            "time": "18:50",
-            "name": "Phishing Domain",
-            "severity": "High",
-            "status": "Blocked"
-        },
-
-        {
-            "time": "18:35",
-            "name": "Malware Hash",
-            "severity": "Medium",
-            "status": "Detected"
-        },
-
-        {
-            "time": "18:20",
-            "name": "Botnet IP",
-            "severity": "Critical",
-            "status": "Active"
-        },
-
-        {
-            "time": "18:05",
-            "name": "SQL Injection Attempt",
-            "severity": "High",
-            "status": "Blocked"
-        }
-
-    ]
-
+    threats = fetch_live_malware()
     return render_template(
-        "threat_intel.html",
+        "threat_intelligence.html",
         threats=threats
     )
 # ======================================
@@ -1029,45 +984,57 @@ def page_not_found(e):
 
     return render_template("404.html"),404
 
-
 @app.errorhandler(500)
 def internal_error(e):
 
     return render_template("500.html"),500
+
+from flask import request, jsonify
+
 @app.route("/chatbot", methods=["POST"])
 def chatbot():
 
-    data=request.get_json()
+    data = request.get_json()
+    msg = data["message"].lower().strip()
 
-    msg=data["message"].lower()
-
-    if "malware" in msg:
-
-        reply="Malware is software designed to damage or steal information."
-
-    elif "safe" in msg:
-
-        reply="Safe files contain no detected malicious behaviour."
-
-    elif "virus" in msg:
-
-        reply="A virus is a malicious program that spreads between files."
-
-    elif "phishing" in msg:
-
-        reply="Phishing attempts to steal passwords through fake websites."
-
-    elif "trojan" in msg:
-
-        reply="A Trojan disguises itself as legitimate software."
-
-    else:
-
-        reply="I'm your AI Security Assistant. Ask me about malware, ransomware, phishing, scans, or cyber security."
-
-    return jsonify({"reply":reply})
-
-
+    msg = data["message"].lower()
+    
+    local_answers = {
+        "malware": "Malware is malicious software designed to damage or steal information from a computer system.",
+        "virus": "A computer virus attaches itself to files and spreads to other systems.",
+        "trojan": "A Trojan disguises itself as legitimate software but performs malicious actions.",
+        "worm": "A worm is self-replicating malware that spreads across networks.",
+        "spyware": "Spyware secretly monitors user activity and steals information.",
+        "phishing": "Phishing tricks users into revealing passwords or personal information using fake emails or websites.",
+        "ransomware": "Ransomware encrypts files and demands payment to restore access.",
+        "sql injection": "SQL Injection attacks a database by inserting malicious SQL queries into user input fields.",
+        "xss": "Cross-Site Scripting (XSS) injects malicious JavaScript into web pages.",
+        "ddos": "A DDoS attack floods a server with traffic to make it unavailable.",
+        "firewall": "A firewall monitors and filters incoming and outgoing network traffic.",
+        "vpn": "A VPN encrypts internet traffic and hides your IP address.",
+        "threat": "A cyber threat is any malicious activity that can compromise a computer system or network.",
+        "cve": "CVE stands for Common Vulnerabilities and Exposures, a public list of known security vulnerabilities.",
+        "network security": "Network security protects computer networks from unauthorized access and cyber attacks."
+    }
+    
+    # Local knowledge first
+    for key, value in local_answers.items():
+        if key in msg:
+            return jsonify({"reply": value})
+    
+        # Gemini fallback
+        try:
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=msg
+            )
+    
+            return jsonify({"reply": response.text})
+    
+        except Exception:
+            return jsonify({
+                "reply": "⚠ Gemini AI is currently unavailable. I'm using my offline cybersecurity knowledge. Ask me about Malware, Virus, Trojan, Worm, SQL Injection, XSS, DDoS, CVE, Firewall, VPN, Network Security, or Ransomware."
+            })
 
 @app.route("/upload", methods=["GET", "POST"])
 @login_required
@@ -1519,11 +1486,124 @@ def signup():
         return redirect(url_for("login"))
 
     return render_template("signup.html")
+
+from database.scan import recent_scans
+
+@app.route("/api/threat")
+@login_required
+def api_threat():
+
+    scans = recent_scans(1)
+
+    if not scans:
+        return jsonify({
+            "status": "No scans yet"
+        })
+
+    scan = scans[0]
+
+    return jsonify({
+        "filename": scan["filename"],
+        "prediction": scan["prediction"],
+        "confidence": scan["confidence"],
+        "risk": scan["risk"],
+        "recommendation": scan["recommendation"],
+        "scan_time": scan["scan_time"]
+    })
+
+from database.scan import recent_scans
+from tools.threat_fetcher import fetch_live_malware, fetch_live_cves, fetch_live_iocs
+@app.route("/api/ai_summary")
+def ai_summary():
+    cves = fetch_live_cves()
+    top_cve = cves[0]["cve"] if cves else "active exploits"
+    res = jsonify({
+        "risk": "High",
+        "summary": f"Live Threat Intelligence active. Real-time feed detected active global exploits including {top_cve}. Verify network rules and secure exposed endpoints."
+    })
+    res.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return res
+
+
+@app.route("/api/ioc_feed")
+def ioc_feed():
+    res = jsonify(fetch_live_iocs())
+    res.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return res
+
+
+@app.route("/api/cve_feed")
+def cve_feed():
+    res = jsonify(fetch_live_cves())
+    res.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return res
+
+
+@app.route("/api/malware_feed")
+def malware_feed():
+    res = jsonify(fetch_live_malware())
+    res.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return res
+
 # ======================================
 # Run Flask
 # =======
 from database.db import init_db
+@app.route("/threat_database")
+@login_required
+def threat_database():
+    threats = [
+        {
+            "name": "Trojan",
+            "severity": "High",
+            "description": "Malicious software disguised as legitimate software."
+        },
+        {
+            "name": "Ransomware",
+            "severity": "Critical",
+            "description": "Encrypts files and demands ransom."
+        },
+        {
+            "name": "Phishing",
+            "severity": "Medium",
+            "description": "Attempts to steal user credentials."
+        },
+        {
+            "name": "Spyware",
+            "severity": "Medium",
+            "description": "Secretly monitors user activity."
+        },
+        {
+            "name": "Worm",
+            "severity": "High",
+            "description": "Self-replicating malware."
+        }
+    ]
 
+    return render_template(
+        "threat_database.html",
+        threats=threats
+    )
+
+import random
+
+@app.route("/live_monitor")
+@login_required
+def live_monitor():
+
+    return render_template(
+
+        "live_monitor.html",
+
+        cpu=random.randint(10,80),
+
+        ram=random.randint(20,90),
+
+        scans=random.randint(1,5),
+
+        threats=random.randint(0,3)
+
+    )
 if __name__ == "__main__":
     print("Initializing database...")
     init_db()
