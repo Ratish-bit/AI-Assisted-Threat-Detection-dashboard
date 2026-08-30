@@ -1,9 +1,9 @@
 # Agile Internship Project Document
 ## AI-Assisted Threat Detection Dashboard
 
-**Internship period:** 22 June 2026 – 20 August 2026  
+**Internship period:** 22 June 2026 – 30 August 2026  
 **Methodology:** Agile / Sprint-based development  
-**Presentation & Demo:** 20 August 2026
+**Presentation & Demo:** 03 September 2026
 
 ## 1. Project Overview
 The **AI-Assisted Threat Detection Dashboard** is a web-based cybersecurity application designed to provide a centralized interface for threat detection, file analysis, security monitoring, analytics, reporting, and cybersecurity assistance. It combines a Flask web application, machine-learning-based threat prediction, SQLite storage, visualization, security utilities, and an optional AI-assisted chatbot.
@@ -114,7 +114,7 @@ The AWS/cloud and deployment-focused contribution included:
 - AWS architecture can be explained.
 - Demo can run without depending on a fragile live EC2 instance.
 
-## 11. Presentation / Demo Flow – 20 August 2026
+## 11. Presentation / Demo Flow – 03 September 2026
 1. Problem statement and cybersecurity motivation.
 2. Project objectives and Agile approach.
 3. System architecture.
